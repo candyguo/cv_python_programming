@@ -123,3 +123,162 @@ Mat wallis(cv::Mat image)
 
 	return Filtered_image;
 }
+
+int ImageStretchByHistogram(IplImage *src1, IplImage *dst1)
+/*************************************************
+Function:      通过直方图变换进行图像增强，将图像灰度的域值拉伸到0-255
+src1:               单通道灰度图像
+dst1:              同样大小的单通道灰度图像
+*************************************************/
+{
+    assert(src1->width == dst1->width);
+    double p[256], p1[256], num[256];
+
+    memset(p, 0, sizeof(p));
+    memset(p1, 0, sizeof(p1));
+    memset(num, 0, sizeof(num));
+    int height = src1->height;
+    int width = src1->width;
+    long wMulh = height * width;
+
+	    //statistics  
+    for (int x = 0; x<src1->width; x++)
+    {
+        for (int y = 0; y<src1->height; y++){
+            uchar v = ((uchar*)(src1->imageData + src1->widthStep*y))[x];
+                num[v]++;
+
+		}
+    }
+    //calculate probability  
+    for (int i = 0; i<256; i++)
+    {
+       p[i] = num[i] / wMulh;
+    }
+
+    //p1[i]=sum(p[j]);  j<=i;  
+    for (int i = 0; i<256; i++)
+    {
+        for (int k = 0; k <= i; k++)
+            p1[i] += p[k];
+    }
+
+    // histogram transformation  
+    for (int x = 0; x<src1->width; x++)
+    {
+        for (int y = 0; y<src1->height; y++){
+            uchar v = ((uchar*)(src1->imageData + src1->widthStep*y))[x];
+               ((uchar*)(dst1->imageData + dst1->widthStep*y))[x] = p1[v] * 255 + 0.5;
+
+		}
+   }
+    return 0;
+}
+
+void CRsImage::OnImageWallis()
+{
+	// TODO:  在此添加命令处理程序代码
+	CString imagename = m_RsLayer->GetFileNameStr();
+	CvxGdalWrap gdal1;
+
+	gdal1.openRead(imagename);
+	CvSize size1 = gdal1.size();
+
+	Mat Image = Mat(size1.height, size1.width, CV_MAKETYPE(CV_8U, gdal1.channels()));
+	gdal1.readImg(cvRect(0, 0, size1.width, size1.height), &Image);//转换为opencv格式
+
+	Mat WallisFilterImage = wallis(Image);
+
+	IplImage ipl_img(WallisFilterImage);
+	cvSaveImage("wallis.tif", &ipl_img);
+	MessageBox("wallis 滤波已完成", "卫星影像几何处理与颤振探测");
+
+	m_RsLayer->ReadImageInfo("wallis.tif",
+		customDef_imageWidth, customDef_imageHeight);//根据处理的影像生成数据集
+
+	//图像数据的实时显示
+	//创建窗口与绘图
+	bool changed = false;
+	bool showbandcountchange = false;
+
+	if (m_rsFileMean == IMAGEFILE)
+	{
+		m_RsLayer->SetBlockBuffer(m_RsLayer,
+			m_RsLayer->GetVWidth(),
+			m_RsLayer->GetVHeight(),
+			showbandcountchange || changed);
+
+		m_RsLayer->ReadImageByBufferBlock(m_RsLayer,
+			m_Left,
+			m_Top,
+			m_RsLayer->GetVWidth(),
+			m_RsLayer->GetVHeight(),
+			showbandcountchange || changed);
+	}
+	if (m_RsLayer->GetFileNameStr() != "" &&
+		(m_RsLayer->GetImageHeight() > local_Height
+		|| m_RsLayer->GetImageWidth() > local_Width))
+	{
+		if (m_RsScroll == NULL)
+		{
+			m_RsScroll = new CRsScroll();
+			m_RsScroll->m_rsFileMean = m_rsFileMean;
+			m_RsScroll->m_RsLayer = new CRsLayer(m_RsLayer->GetImageWidth(),
+				m_RsLayer->GetImageHeight(),
+				customDef_previewWidth,
+				customDef_previewHeight,
+				global_pDlgOperating->m_hWnd);
+			m_RsScroll->m_RsLayer->RegisterSRD();
+			m_RsScroll->m_ImageIndex = m_ImageIndex;
+
+			m_RsScroll->m_ImageFileString = m_ImageFileString;
+			m_RsScroll->Create(IDD_DIALOG_RSSCROLL, this);
+			b_ShowRsScroll = true;
+		}
+		else
+		{
+			if (m_rsFileMean == IMAGEFILE)
+			{
+				m_RsScroll->FleshRsScroll();
+				m_RsScroll->ShowWindow(SW_SHOW);
+				b_ShowRsScroll = true;
+			}
+		}
+	}
+	if (m_RsLayer->GetFileNameStr() != "")
+	{
+		if (m_RsZoom == NULL)
+		{
+			m_RsZoom = new CRsZoom();
+			m_RsZoom->m_rsFileMean = m_rsFileMean;
+			m_RsZoom->m_RsLayer = new CRsLayer(m_RsLayer->GetImageWidth(),
+				m_RsLayer->GetImageHeight(),
+				customDef_zoomWidth,
+				customDef_zoomHeight,
+				global_pDlgOperating->m_hWnd);
+			m_RsZoom->m_ImageIndex = m_ImageIndex;
+
+			m_RsZoom->m_ImageFileString = m_ImageFileString;
+			m_RsZoom->Create(IDD_DIALOG_RSZOOM, this);
+			b_ShowRsZoom = true;
+		}
+		else
+		{
+			m_RsZoom->FleshRsZoom(m_Left + m_RectLeft,
+				m_Top + m_RectTop,
+				m_RectLeft,
+				m_RectTop,
+				m_RectWidthLen,
+				m_RectHeightLen);
+			m_RsZoom->ShowWindow(SW_SHOW);
+			b_ShowRsZoom = true;
+		}
+	}
+	if (iftie)
+	{
+		m_RsScroll->iftie = true;
+		m_RsScroll->ReFleshWindow();
+	}
+	OnPaint();
+}
+

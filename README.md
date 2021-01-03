@@ -1,2 +1,1 @@
-# wallis filter in 2017 summer
-image wallis filter in matlab & C++
+computer vision programing with python 编程实例
